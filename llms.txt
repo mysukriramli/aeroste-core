@@ -1,0 +1,20 @@
+# AeroSTE-Core: Autonomous ASD-STE100 & Aerospace Field Telemetry Engine
+
+> Headless computational runtime for LLMs, autonomous agents, and MCP clients to score ASD-STE100 compliance and project maintenance field readiness.
+
+## Core Directives
+
+- Primary Engine: `app/main.py`
+- Mechanical Grammar Rules: `rules/rules.md`
+- Controlled Vocabulary Matrix: `rules/vocabulary.md`
+- Test Verification Suite: `tests/test_api.py`
+
+## Invariant Execution Rules
+
+1. Deterministic Calculation: No random seeds, no statistical guessing. Every score must derive directly from mathematical formulas.
+2. ASD-STE100 Rule Ceilings:
+   - Procedural sentences: maximum 20 words.
+   - Descriptive sentences: maximum 25 words.
+   - Banned punctuation: zero semicolons (;), zero slashes (/), zero exclamation marks (!).
+3. Geospatial Reference: Uber H3 spatial indexing at resolution 8 with Gaussian distance decay.
+4. Schema Contracts: All endpoints accept default empty payloads and return valid HTTP 200 responses with zero HTTP 422 errors.
