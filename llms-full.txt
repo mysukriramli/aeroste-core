@@ -1,0 +1,57 @@
+# AeroSTE-Core: Complete Autonomous Reference & API Specification
+
+> Complete reference for LLM reasoning engines (Claude 3.7+, Gemini 1.5/2.0 Pro, OpenAI o1/o3) containing schemas, syntax grammar boundaries, controlled dictionary, and CLI mechanics.
+
+## 1. Profiles & Syntactic Boundaries
+
+### Profile: `general`
+- Target: Business memos, cross-department emails, client communication.
+- Maximum Sentence Length: 35 words.
+- Punctuation: Standard English punctuation permitted.
+- Optimization Target: Strips Latinate and corporate filler.
+  * "due to the fact that" -> "because"
+  * "in order to" -> "to"
+  * "at this point in time" -> "now"
+  * "facilitate" -> "help"
+  * "subsequent to" -> "after"
+
+### Profile: `technical`
+- Target: Developer documentation, engineering standard operating procedures (SOPs).
+- Maximum Sentence Length: 25 words.
+- Punctuation: Slashes ("/") prohibited; converted into explicit boolean terms ("and", "or").
+- Passive voice heavily penalized.
+
+### Profile: `aerospace_ste` (ASD-STE100 Issue 8 Standard)
+- Target: Flight operations, aircraft maintenance manuals (AMM), hazardous defense protocols.
+- Maximum Sentence Length: 20 words for procedural steps, 25 words for descriptions.
+- Prohibited Punctuation: Semicolons (;), slashes (/), exclamation marks (!).
+- Banned Verbs: Full ASD-STE100 Issue 8 dictionary enforcement.
+  * "utilize" -> "use"
+  * "commence" -> "start"
+  * "terminate" -> "stop"
+  * "eliminate" -> "remove"
+  * "verify" -> "check"
+  * "inspect" -> "examine"
+  * "vicinity" -> "area"
+
+## 2. Mathematical Scoring Formulas
+
+The compliance score $S_{\text{STE}} \in [0.0, 100.0]$ is deterministic:
+
+$$S_{\text{STE}} = \max\left(0.0, \min\left(100.0, 100.0 \cdot \exp\left(-\left(0.40 \cdot \frac{L_{\text{nci}}}{10} + 0.35 \cdot \frac{P_{\text{slb}}}{S} + 0.25 \cdot C_{\text{nc}}\right)\right)\right)\right)$$
+
+Where:
+- $L_{\text{nci}} = \left(\frac{\sum w_i \cdot c_i}{N_{\text{total}}}\right) \times 100$ (Lexical Non-Compliance Index)
+- $P_{\text{slb}} = \sum \max(0, \text{len}(s) - L_{\text{max}})^{1.35}$ (Sentence Length Breach Penalty)
+- $C_{\text{nc}} = \sum \max(0, \text{len}(cluster) - (T-1))$ (Dense Noun Cluster Penalty)
+
+Readiness thresholds:
+- `OPTIMAL`: Score >= 85.0
+- `MODERATE`: 65.0 <= Score < 85.0
+- `CRITICAL`: Score < 65.0
+
+## 3. Terminal & Package Interface
+
+### Installation
+```bash
+pip install git+[https://github.com/mysukriramli/aeroste-core.git](https://github.com/mysukriramli/aeroste-core.git)
