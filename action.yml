@@ -1,18 +1,40 @@
-name: 'AeroSTE Compliance Check'
-description: 'Lints technical documentation and aerospace manuals for ASD-STE100 compliance.'
+name: 'AeroSTE Compliance Action'
+description: 'Autonomous multi-tier controlled language linter and ASD-STE100 validator.'
+author: 'mysukriramli'
+
 inputs:
   path:
-    description: 'Path or glob to scan'
+    description: 'Path or file to audit'
     required: true
-    default: 'docs/**/*.md'
+    default: 'input/'
   profile:
-    description: 'Strictness profile (general | technical | aerospace_ste)'
+    description: 'Compliance strictness profile (general, technical, aerospace_ste)'
     required: false
-    default: 'technical'
+    default: 'aerospace_ste'
+  sarif_output:
+    description: 'Path to save SARIF report (optional)'
+    required: false
+    default: ''
+
 runs:
   using: 'composite'
   steps:
-    - shell: bash
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install AeroSTE-Core
+      shell: bash
       run: |
-        python -m pip install git+https://github.com/mysukriramli/aeroste-core.git
-        aeroste check ${{ inputs.path }} --profile ${{ inputs.profile }}
+        python -m pip install --upgrade pip
+        pip install git+https://github.com/mysukriramli/aeroste-core.git
+
+    - name: Run AeroSTE Audit
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.sarif_output }}" ]; then
+          aeroste check "${{ inputs.path }}" --profile "${{ inputs.profile }}" --sarif > "${{ inputs.sarif_output }}"
+        else
+          aeroste check "${{ inputs.path }}" --profile "${{ inputs.profile }}"
+        fi
