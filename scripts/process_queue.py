@@ -18,7 +18,6 @@ def apply_lexical_replacements(text: str, profile: str = "aerospace_ste") -> str
     lexicon = STE_LEXICON if profile == "aerospace_ste" else GENERAL_CLUTTER_LEXICON
     transformed = text
 
-    # Sort descending by token length to avoid substring collisions
     sorted_terms = sorted(lexicon.keys(), key=len, reverse=True)
     for unapproved in sorted_terms:
         approved = lexicon[unapproved]
