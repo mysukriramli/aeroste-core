@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - 'input/**'
+  schedule:
+    # Runs automatically at minute 0 of every hour, 24/7
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -28,7 +31,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run STE Batch Queue
+    - name: Run STE Batch Queue & Quarantine
       run: |
         python scripts/process_queue.py
 
@@ -36,10 +39,10 @@ jobs:
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add output/
+        git add output/ input/quarantine/
         if git diff --staged --quiet; then
-          echo "No changes in output/ to commit."
+          echo "Queue empty or no state changes."
         else
-          git commit -m "Auto-transform input documents to compliant STE [skip ci]"
+          git commit -m "Auto-process queue and sync output [skip ci]"
           git push
         fi
