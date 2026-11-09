@@ -1,4 +1,4 @@
-"""Deterministic ASD-STE100 evaluation and geospatial calculation engine."""
+"""Deterministic text clarity, technical documentation, and ASD-STE100 engine."""
 
 import math
 import re
@@ -18,14 +18,33 @@ MRO_FACILITIES: List[Tuple[float, float]] = [
     (1.4172, 103.8672),  # Seletar Aerospace Hub
 ]
 
-# Standard ASD-STE100 Issue 8 non-approved token mapping
-UNAPPROVED_LEXICON: Dict[str, str] = {
+# Tier 1: General English Fluff & Bloat Replacement Dictionary
+GENERAL_CLUTTER_LEXICON: Dict[str, str] = {
+    "in order to": "to",
+    "due to the fact that": "because",
+    "at this point in time": "now",
+    "utilize": "use",
+    "utilization": "use",
+    "commence": "start",
+    "terminate": "end",
+    "facilitate": "help",
+    "implement": "carry out / start",
+    "subsequent to": "after",
+    "prior to": "before",
+    "in the event that": "if",
+    "with reference to": "about",
+    "for the purpose of": "to",
+    "in accordance with": "under / by",
+}
+
+# Tier 3: Strict ASD-STE100 Issue 8 non-approved token mapping
+STE_LEXICON: Dict[str, str] = {
+    **GENERAL_CLUTTER_LEXICON,
     "accomplish": "do",
     "accumulate": "collect",
     "ascertain": "make sure",
     "assemble": "put together",
     "cease": "stop",
-    "commence": "start",
     "determine": "calculate",
     "discard": "throw away",
     "eliminate": "remove",
@@ -33,21 +52,14 @@ UNAPPROVED_LEXICON: Dict[str, str] = {
     "frequently": "often",
     "illuminate": "turn on",
     "immediately": "at once",
-    "in order to": "to",
     "inspect": "examine",
     "perform": "do",
     "permit": "allow",
-    "prior to": "before",
     "rectify": "repair",
-    "terminate": "stop",
-    "utilize": "use",
     "verify": "check",
     "vicinity": "area",
 }
 
-BANNED_PUNCTUATION = [";", "/", "!"]
-
-# Structural function words that break noun clusters
 FUNCTION_STOP_WORDS = {
     "a", "an", "the", "this", "that", "these", "those", "my", "your", "his", "her", "its", "our", "their",
     "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did",
@@ -71,9 +83,7 @@ def clamp_coordinates(lat: Any = 0.0, lon: Any = 0.0) -> Tuple[float, float]:
     except (ValueError, TypeError):
         lon_f = 0.0
 
-    lat_clamped = max(-90.0, min(90.0, lat_f))
-    lon_clamped = max(-180.0, min(180.0, lon_f))
-    return lat_clamped, lon_clamped
+    return max(-90.0, min(90.0, lat_f)), max(-180.0, min(180.0, lon_f))
 
 
 def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -87,12 +97,11 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
         math.sin(delta_phi / 2.0) ** 2
         + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
     )
-    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
-    return r_earth * c
+    return r_earth * (2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a)))
 
 
 def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dict[str, Any]:
-    """Compute deterministic ASD-STE100 compliance and risk scoring."""
+    """Compute deterministic text clarity & compliance scoring across 3 tiers."""
     if payload is None:
         payload = {}
 
@@ -100,10 +109,30 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
     if not raw_text:
         raw_text = "Make sure that the valve is closed."
 
+    profile = str(payload.get("profile", "aerospace_ste")).lower().strip()
+    if profile not in ["general", "technical", "aerospace_ste"]:
+        profile = "aerospace_ste"
+
     lat, lon = clamp_coordinates(payload.get("lat", 2.27), payload.get("lon", 102.55))
     window_steps = max(1, min(100, int(payload.get("window_steps", 10))))
 
-    # 1. Token and sentence parsing
+    # Profile configurations
+    if profile == "general":
+        max_sentence_len = 35
+        lexicon_target = GENERAL_CLUTTER_LEXICON
+        banned_punctuations = []
+        cluster_threshold = 5
+    elif profile == "technical":
+        max_sentence_len = 25
+        lexicon_target = GENERAL_CLUTTER_LEXICON
+        banned_punctuations = ["/"]
+        cluster_threshold = 4
+    else:  # aerospace_ste (Strict Issue 8)
+        max_sentence_len = 20
+        lexicon_target = STE_LEXICON
+        banned_punctuations = [";", "/", "!"]
+        cluster_threshold = 4
+
     clean_text = raw_text.replace("\r", " ")
     sentences = [s.strip() for s in re.split(r"[.!?]+", clean_text) if s.strip()]
     if not sentences:
@@ -112,40 +141,38 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
     tokens = re.findall(r"\b[A-Za-z0-9_-]+\b", clean_text)
     total_words = max(1, len(tokens))
 
-    # 2. Lexical Non-Compliance Index (L_nci)
+    # 1. Lexical checks
     violations = []
     text_lower = clean_text.lower()
-    lexical_penalty_sum = 0.0
+    lexical_penalty = 0.0
 
-    for unapproved, approved in UNAPPROVED_LEXICON.items():
-        pattern = r"\b" + re.escape(unapproved) + r"\b"
+    for term, alternative in lexicon_target.items():
+        pattern = r"\b" + re.escape(term) + r"\b"
         matches = len(re.findall(pattern, text_lower))
         if matches > 0:
-            lexical_penalty_sum += matches * 1.0
+            lexical_penalty += matches * 1.0
             violations.append(
-                {"term": unapproved, "approved": approved, "rule": "ASD-STE100 Rule 1.1"}
+                {"term": term, "approved": alternative, "rule": f"{profile.upper()}_LEXICAL"}
             )
 
-    for p in BANNED_PUNCTUATION:
+    for p in banned_punctuations:
         punct_count = raw_text.count(p)
         if punct_count > 0:
-            lexical_penalty_sum += punct_count * 1.5
+            lexical_penalty += punct_count * 1.5
             violations.append(
-                {"term": p, "approved": "[DELETE/REPHRASE]", "rule": "ASD-STE100 Rule 2.1"}
+                {"term": p, "approved": "[REPHRASE]", "rule": f"{profile.upper()}_PUNCTUATION"}
             )
 
-    l_nci = (lexical_penalty_sum / total_words) * 100.0
+    l_nci = (lexical_penalty / total_words) * 100.0
 
-    # 3. Sentence Length Breach Penalty (P_slb)
-    # Default ceiling: 20 words for procedural steps
+    # 2. Sentence length checks
     p_slb = 0.0
     for s in sentences:
         s_words = len(re.findall(r"\b[A-Za-z0-9_-]+\b", s))
-        if s_words > 20:
-            p_slb += (s_words - 20) ** 1.35
+        if s_words > max_sentence_len:
+            p_slb += (s_words - max_sentence_len) ** 1.35
 
-    # 4. Noun Cluster Penalty (C_nc)
-    # Detect strings of 4 or more content words uninterrupted by stopwords
+    # 3. Dense word clustering
     c_nc = 0.0
     for s in sentences:
         words = re.findall(r"\b[A-Za-z0-9_-]+\b", s)
@@ -154,22 +181,20 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
             if w.lower() not in FUNCTION_STOP_WORDS and len(w) > 1:
                 cluster.append(w)
             else:
-                if len(cluster) >= 4:
-                    c_nc += float(len(cluster) - 3)
+                if len(cluster) >= cluster_threshold:
+                    c_nc += float(len(cluster) - (cluster_threshold - 1))
                 cluster = []
-        if len(cluster) >= 4:
-            c_nc += float(len(cluster) - 3)
+        if len(cluster) >= cluster_threshold:
+            c_nc += float(len(cluster) - (cluster_threshold - 1))
 
-    # 5. Composite Compliance Score (S_ste)
+    # 4. Composite Scoring Formula
     exponent_val = 0.40 * (l_nci / 10.0) + 0.35 * (p_slb / max(1, len(sentences))) + 0.25 * c_nc
     primary_metric = round(float(100.0 * math.exp(-exponent_val)), 2)
     primary_metric = max(0.0, min(100.0, primary_metric))
 
-    # Secondary normalized score and state index
     secondary_score = round(primary_metric / 100.0, 4)
     state_index = round(float((primary_metric * 0.7) + (min(100.0, window_steps * 10.0) * 0.3)), 2)
 
-    # Classification
     if primary_metric >= 85.0:
         classification = "OPTIMAL"
     elif primary_metric >= 65.0:
@@ -182,6 +207,7 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "status": "healthy",
+        "profile": profile,
         "primary_metric": primary_metric,
         "secondary_score": secondary_score,
         "state_index": state_index,
@@ -203,7 +229,6 @@ def compute_h3_spatial_tensor(lat: Any = 2.0442, lon: Any = 102.5689, resolution
     clamped_lat, clamped_lon = clamp_coordinates(lat, lon)
     res = max(0, min(15, int(resolution)))
 
-    # Compute valid H3 index (compatible with h3 v3 and v4)
     if h3 is not None:
         if hasattr(h3, "latlng_to_cell"):
             h3_index = h3.latlng_to_cell(clamped_lat, clamped_lon, res)
@@ -216,7 +241,6 @@ def compute_h3_spatial_tensor(lat: Any = 2.0442, lon: Any = 102.5689, resolution
         lon_hex = hex(int((clamped_lon + 180.0) * 1000))[2:].zfill(4)
         h3_index = f"8865{lat_hex}{lon_hex}fff"[:15]
 
-    # Calculate deterministic Gaussian spatial density relative to MRO facilities
     sigma_km = 120.0
     density_val = 0.0
     for mro_lat, mro_lon in MRO_FACILITIES:
