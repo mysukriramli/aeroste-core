@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aeroste-core"
+version = "1.1.0"
+description = "Multi-tier controlled language compliance and spatial telemetry engine"
+authors = [{ name = "mysukriramli" }]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0",
+    "pydantic>=2.10.0",
+    "h3>=4.1.0",
+    "httpx>=0.28.0"
+]
+
+[project.scripts]
+aeroste = "app.cli:cli_entrypoint"
