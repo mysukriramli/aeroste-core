@@ -1,28 +1,72 @@
-# AeroSTE-Core: Multi-Tier Communication Clarity & Controlled Language Engine
+# AeroSTE-Core: Multi-Tier Controlled Language & Field Telemetry Engine
 
-> Autonomous computational engine for evaluating and transforming communication into clear, unambiguous prose—ranging from everyday business text to mission-critical ASD-STE100 aerospace standards.
+> Autonomous computational runtime for LLMs, autonomous agents, and MCP clients to score clarity, enforce ASD-STE100 Issue 8 bounds, and project maintenance field readiness.
+
+## Core Directives & Endpoints
+
+- Primary Analytical Engine: `app/engine.py`
+- Operational REST Service: `app/main.py`
+- Mechanical Grammar Rules: `rules/rules.md`
+- Controlled Vocabulary Matrix: `rules/vocabulary.md`
+- FastMCP Server: `mcp_server.py`
+- Batch Transformation Runner: `scripts/process_queue.py`
+- CI Verification Suite: `tests/test_api.py`
 
 ## Supported Strictness Profiles
 
 1. `profile: "general"` (Default)
-   - Everyday professional text, emails, executive summaries, agent-to-agent reports.
+   - Scope: Everyday professional text, executive memos, client emails, team updates.
    - Max sentence limit: 35 words.
-   - Eliminates filler phrasing ("in order to", "due to the fact that", "at this point in time").
-   - Punctuation: Standard English (semicolons allowed).
+   - Normal punctuation allowed (semicolons permitted).
+   - Eliminates corporate bloat and filler: "due to the fact that" -> "because", "in order to" -> "to", "at this point in time" -> "now".
 
 2. `profile: "technical"`
-   - Standard Operating Procedures (SOPs), API documentation, engineering guides.
+   - Scope: Engineering SOPs, software API guides, maintenance manuals.
    - Max sentence limit: 25 words.
-   - Flags passive voice and slash constructions.
+   - Passive voice penalized; slashes ("/") prohibited and converted to explicit logic ("and" / "or").
 
-3. `profile: "aerospace_ste"` (Strict Standard)
-   - ASD-STE100 Issue 8 compliance for flight ops, defense, and life-critical robotics.
-   - Max sentence limit: 20 words for instructions.
-   - Zero tolerance for semicolons (;), slashes (/), or unapproved terms.
-   - Mandatory reference matrix: `rules/vocabulary.md`.
+3. `profile: "aerospace_ste"` (Mission-Critical Standard)
+   - Scope: ASD-STE100 Issue 8 compliance for aviation, defense, and life-critical operations.
+   - Max sentence limit: 20 words for instructions, 25 words for descriptions.
+   - Zero tolerance for semicolons (;), slashes (/), or exclamation marks (!).
+   - Mandatory term substitutions mapped against `rules/vocabulary.md`.
 
-## Data Flow for Agents
+## Deterministic Mathematical Invariants
 
-- **Raw Input Drop:** `input/`
-- **Normalized Output:** `output/[filename].[profile].md`
-- **Validation Engine:** `POST /evaluate_ste_compliance` with `{"profile": "<tier>", "text_payload": "..."}`
+Every score and state index must be calculated using closed-form formulations without random seeds or stochastic drift:
+
+- Lexical Non-Compliance Index ($L_{nci}$):
+  $$L_{nci} = \left(\frac{\sum w_i \cdot c_i}{N_{total}}\right) \times 100$$
+- Sentence Length Breach Penalty ($P_{slb}$):
+  $$P_{slb} = \sum \max(0, \text{len}(s) - L_{max})^{1.35}$$
+- Composite Compliance Score ($S_{STE} \in [0.0, 100.0]$):
+  $$S_{STE} = \max\left(0.0, \min\left(100.0, 100.0 \cdot \exp\left(-\left(0.40 \cdot \frac{L_{nci}}{10} + 0.35 \cdot \frac{P_{slb}}{S} + 0.25 \cdot C_{nc}\right)\right)\right)\right)$$
+- Readiness Classifications:
+  - `OPTIMAL`: $S_{STE} \ge 85.0$
+  - `MODERATE`: $65.0 \le S_{STE} < 85.0$
+  - `CRITICAL`: $S_{STE} < 65.0$
+
+## 24/7 Autonomous Agent Execution Protocol
+
+Autonomous agents operating on this repository must conform to the following execution contracts:
+
+1. Batch Queue Pipeline (`input/` -> `output/`):
+   - Ingest raw markdown or plain text files from `input/`.
+   - Respect file-level profile directive on line 1: `<!-- profile: general | technical | aerospace_ste -->`.
+   - Apply deterministic lexical substitutions and auto-capitalize post-period sentences.
+   - Write transformed documents and embedded verification audits to `output/[filename].ste.md`.
+   - Scheduled GitHub Actions sweeps execute on every push and via hourly cron (`0 * * * *`).
+   - If a file has invalid encoding or execution errors, route it to `input/quarantine/` with a corresponding `[filename].error.json`.
+
+2. Reflection & Self-Correction Loop:
+   - When drafting technical prose, submit text to `POST /evaluate_ste_compliance`.
+   - If the classification is `CRITICAL` or `MODERATE`, parse the `violations` list.
+   - Refactor text using the returned `approved` values and repeat until `OPTIMAL` (score >= 85.0) is achieved.
+
+3. Contract Resilience:
+   - All API endpoints must accept empty parameter payloads and return HTTP 200 with fallback defaults.
+   - Coordinates are clamped safely to `[-90.0, 90.0]` and `[-180.0, 180.0]`. Zero HTTP 400 or HTTP 422 errors permitted.
+
+4. Autonomous Lexicon Expansion:
+   - When encountering unapproved domain-specific terms with clear ASD-STE100 root alternatives, agents are authorized to open a GitHub Pull Request appending rows to `rules/vocabulary.md` formatted as:
+     `| <rejected> | <approved> | <operational example> |`
