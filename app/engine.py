@@ -1,10 +1,12 @@
-"""Deterministic text clarity, technical documentation, and ASD-STE100 engine with SHA-256 caching."""
+"""Deterministic text clarity, technical documentation, and ASD-STE100 engine with offset tracking, diff patching, and SARIF support."""
 
+import difflib
 import hashlib
+import json
 import math
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import h3
@@ -15,7 +17,7 @@ except ImportError:
 EVALUATION_CACHE: Dict[str, Dict[str, Any]] = {}
 MAX_CACHE_SIZE = 10000
 
-# Reference MRO hangar facilities for spatial density calculations (lat, lon)
+# Reference MRO facilities for spatial density calculations (lat, lon)
 MRO_FACILITIES: List[Tuple[float, float]] = [
     (2.7456, 101.6974),  # KLIA Aeropolis Hangar Complex
     (3.1319, 101.5496),  # Subang Aerospace Park
@@ -78,7 +80,7 @@ FUNCTION_STOP_WORDS = {
 
 
 def clamp_coordinates(lat: Any = 0.0, lon: Any = 0.0) -> Tuple[float, float]:
-    """Safely clamp coordinates to valid geographic ranges without throwing errors."""
+    """Safely clamp coordinates to valid geographic ranges without throwing exceptions."""
     try:
         lat_f = float(lat)
     except (ValueError, TypeError):
@@ -105,8 +107,48 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
     return r_earth * (2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a)))
 
 
-def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dict[str, Any]:
-    """Compute deterministic text clarity and compliance scoring across 3 tiers with LRU caching."""
+def compute_line_col(text: str, offset: int) -> Tuple[int, int]:
+    """Convert an absolute character index into 1-based (line, column) coordinates."""
+    line = text.count("\n", 0, offset) + 1
+    last_nl = text.rfind("\n", 0, offset)
+    col = offset + 1 if last_nl == -1 else (offset - last_nl)
+    return line, col
+
+
+def generate_patch(original: str, edits: List[Dict[str, Any]]) -> Tuple[str, str]:
+    """Apply non-overlapping byte replacements in reverse order and return the transformed text and unified diff."""
+    # Sort descending by start index to prevent coordinate drift during substitution
+    sorted_edits = sorted(edits, key=lambda e: e["start"], reverse=True)
+    transformed = original
+
+    for edit in sorted_edits:
+        s, e, rep = edit["start"], edit["end"], edit["replacement"]
+        if rep != "[REPHRASE]":
+            orig_slice = transformed[s:e]
+            if orig_slice.isupper():
+                rep_cased = rep.upper()
+            elif orig_slice and orig_slice[0].isupper():
+                rep_cased = rep.capitalize()
+            else:
+                rep_cased = rep
+            transformed = transformed[:s] + rep_cased + transformed[e:]
+
+    # Post-repair capitalization after period separations
+    transformed = re.sub(r'(?<=\.\s)([a-z])', lambda m: m.group(1).upper(), transformed)
+
+    diff_lines = list(difflib.unified_diff(
+        original.splitlines(keepends=True),
+        transformed.splitlines(keepends=True),
+        fromfile="original",
+        tofile="compliant",
+        n=3
+    ))
+    patch_str = "".join(diff_lines)
+    return transformed, patch_str
+
+
+def evaluate_ste_metrics(payload: Optional[Dict[str, Any]] = None, *args, **kwargs) -> Dict[str, Any]:
+    """Compute deterministic text compliance with character offsets and diff generation."""
     if payload is None:
         payload = {}
 
@@ -121,7 +163,7 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
     lat, lon = clamp_coordinates(payload.get("lat", 2.27), payload.get("lon", 102.55))
     window_steps = max(1, min(100, int(payload.get("window_steps", 10))))
 
-    # SHA-256 cache check for sub-millisecond execution
+    # SHA-256 cache check
     cache_payload = f"{profile}:{raw_text}:{window_steps}"
     cache_key = hashlib.sha256(cache_payload.encode("utf-8")).hexdigest()
 
@@ -155,27 +197,59 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
     tokens = re.findall(r"\b[A-Za-z0-9_-]+\b", clean_text)
     total_words = max(1, len(tokens))
 
-    # 1. Lexical checks
+    # 1. Lexical checks with character offset tracking
     violations = []
-    text_lower = clean_text.lower()
+    edits = []
     lexical_penalty = 0.0
 
-    for term, alternative in lexicon_target.items():
+    # Sort descending by length to avoid partial-token match collision
+    sorted_terms = sorted(lexicon_target.keys(), key=len, reverse=True)
+    for term in sorted_terms:
+        alternative = lexicon_target[term]
         pattern = r"\b" + re.escape(term) + r"\b"
-        matches = len(re.findall(pattern, text_lower))
-        if matches > 0:
-            lexical_penalty += matches * 1.0
-            violations.append(
-                {"term": term, "approved": alternative, "rule": f"{profile.upper()}_LEXICAL"}
-            )
+        for match in re.finditer(pattern, clean_text, re.IGNORECASE):
+            s_idx, e_idx = match.start(), match.end()
+            line, col = compute_line_col(clean_text, s_idx)
+            lexical_penalty += 1.0
+
+            violation_entry = {
+                "term": term,
+                "approved": alternative,
+                "rule": f"{profile.upper()}_LEXICAL",
+                "start": s_idx,
+                "end": e_idx,
+                "line": line,
+                "column": col
+            }
+            violations.append(violation_entry)
+            edits.append({
+                "start": s_idx,
+                "end": e_idx,
+                "original": match.group(0),
+                "replacement": alternative
+            })
 
     for p in banned_punctuations:
-        punct_count = raw_text.count(p)
-        if punct_count > 0:
-            lexical_penalty += punct_count * 1.5
-            violations.append(
-                {"term": p, "approved": "[REPHRASE]", "rule": f"{profile.upper()}_PUNCTUATION"}
-            )
+        rep = "." if p in [";", "!"] else " and "
+        for idx, ch in enumerate(clean_text):
+            if ch == p:
+                line, col = compute_line_col(clean_text, idx)
+                lexical_penalty += 1.5
+                violations.append({
+                    "term": p,
+                    "approved": "[REPHRASE]",
+                    "rule": f"{profile.upper()}_PUNCTUATION",
+                    "start": idx,
+                    "end": idx + 1,
+                    "line": line,
+                    "column": col
+                })
+                edits.append({
+                    "start": idx,
+                    "end": idx + 1,
+                    "original": p,
+                    "replacement": rep
+                })
 
     l_nci = (lexical_penalty / total_words) * 100.0
 
@@ -218,6 +292,9 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
 
     primary_driver = "lexical_non_compliance" if l_nci > p_slb else "sentence_length_breach"
 
+    # Generate unified diff patch and reconstructed compliant text
+    transformed_text, unified_patch = generate_patch(raw_text, edits)
+
     result = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "status": "healthy",
@@ -226,6 +303,8 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
         "secondary_score": secondary_score,
         "state_index": state_index,
         "classification": classification,
+        "patch": unified_patch,
+        "transformed_text": transformed_text,
         "explainability": {
             "primary_driver": primary_driver,
             "weights": {
@@ -234,15 +313,68 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
                 "noun_cluster_penalty": round(min(1.0, c_nc / 20.0), 2),
             },
             "violations": violations,
+            "edits": edits,
         },
     }
 
-    # Store in execution cache with FIFO eviction
     if len(EVALUATION_CACHE) >= MAX_CACHE_SIZE:
         EVALUATION_CACHE.pop(next(iter(EVALUATION_CACHE)))
     EVALUATION_CACHE[cache_key] = result
 
     return result
+
+
+def generate_sarif_report(evaluation: Dict[str, Any], file_uri: str = "document.md") -> Dict[str, Any]:
+    """Export compliance violations into the standard SARIF v2.1.0 JSON format for GitHub Code Scanning."""
+    rules_map = {}
+    results = []
+
+    for idx, v in enumerate(evaluation.get("explainability", {}).get("violations", [])):
+        rule_id = v.get("rule", "STE_COMPLIANCE")
+        if rule_id not in rules_map:
+            rules_map[rule_id] = {
+                "id": rule_id,
+                "shortDescription": {"text": f"Controlled Language Rule: {rule_id}"},
+                "help": {"text": f"Replace '{v.get('term')}' with approved term '{v.get('approved')}'."}
+            }
+
+        results.append({
+            "ruleId": rule_id,
+            "level": "error" if evaluation.get("classification") == "CRITICAL" else "warning",
+            "message": {
+                "text": f"Non-compliant token '{v.get('term')}'. Replace with '{v.get('approved')}'."
+            },
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": file_uri},
+                        "region": {
+                            "startLine": v.get("line", 1),
+                            "startColumn": v.get("column", 1),
+                            "endColumn": v.get("column", 1) + len(v.get("term", ""))
+                        }
+                    }
+                }
+            ]
+        })
+
+    return {
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "AeroSTE-Core",
+                        "version": "1.1.0",
+                        "informationUri": "https://github.com/mysukriramli/aeroste-core",
+                        "rules": list(rules_map.values())
+                    }
+                },
+                "results": results
+            }
+        ]
+    }
 
 
 def compute_h3_spatial_tensor(lat: Any = 2.0442, lon: Any = 102.5689, resolution: int = 8, *args, **kwargs) -> Dict[str, Any]:
