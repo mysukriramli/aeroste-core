@@ -1,5 +1,6 @@
-"""Deterministic text clarity, technical documentation, and ASD-STE100 engine."""
+"""Deterministic text clarity, technical documentation, and ASD-STE100 engine with SHA-256 caching."""
 
+import hashlib
 import math
 import re
 from datetime import datetime, timezone
@@ -9,6 +10,10 @@ try:
     import h3
 except ImportError:
     h3 = None
+
+# In-memory execution cache for 24/7 agentic deduplication
+EVALUATION_CACHE: Dict[str, Dict[str, Any]] = {}
+MAX_CACHE_SIZE = 10000
 
 # Reference MRO hangar facilities for spatial density calculations (lat, lon)
 MRO_FACILITIES: List[Tuple[float, float]] = [
@@ -101,7 +106,7 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
 
 
 def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dict[str, Any]:
-    """Compute deterministic text clarity & compliance scoring across 3 tiers."""
+    """Compute deterministic text clarity and compliance scoring across 3 tiers with LRU caching."""
     if payload is None:
         payload = {}
 
@@ -115,6 +120,15 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
 
     lat, lon = clamp_coordinates(payload.get("lat", 2.27), payload.get("lon", 102.55))
     window_steps = max(1, min(100, int(payload.get("window_steps", 10))))
+
+    # SHA-256 cache check for sub-millisecond execution
+    cache_payload = f"{profile}:{raw_text}:{window_steps}"
+    cache_key = hashlib.sha256(cache_payload.encode("utf-8")).hexdigest()
+
+    if cache_key in EVALUATION_CACHE:
+        cached_result = EVALUATION_CACHE[cache_key].copy()
+        cached_result["timestamp"] = datetime.now(timezone.utc).isoformat()
+        return cached_result
 
     # Profile configurations
     if profile == "general":
@@ -204,7 +218,7 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
 
     primary_driver = "lexical_non_compliance" if l_nci > p_slb else "sentence_length_breach"
 
-    return {
+    result = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "status": "healthy",
         "profile": profile,
@@ -223,9 +237,16 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
         },
     }
 
+    # Store in execution cache with FIFO eviction
+    if len(EVALUATION_CACHE) >= MAX_CACHE_SIZE:
+        EVALUATION_CACHE.pop(next(iter(EVALUATION_CACHE)))
+    EVALUATION_CACHE[cache_key] = result
+
+    return result
+
 
 def compute_h3_spatial_tensor(lat: Any = 2.0442, lon: Any = 102.5689, resolution: int = 8, *args, **kwargs) -> Dict[str, Any]:
-    """Compute spatial H3 cell index and maintenance hangar density."""
+    """Compute spatial H3 cell index and localized MRO facility density."""
     clamped_lat, clamped_lon = clamp_coordinates(lat, lon)
     res = max(0, min(15, int(resolution)))
 
