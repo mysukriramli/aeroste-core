@@ -1,20 +1,28 @@
-# AeroSTE-Core: Autonomous ASD-STE100 & Aerospace Field Telemetry Engine
+# AeroSTE-Core: Multi-Tier Communication Clarity & Controlled Language Engine
 
-> Headless computational runtime for LLMs, autonomous agents, and MCP clients to score ASD-STE100 compliance and project maintenance field readiness.
+> Autonomous computational engine for evaluating and transforming communication into clear, unambiguous prose—ranging from everyday business text to mission-critical ASD-STE100 aerospace standards.
 
-## Core Directives
+## Supported Strictness Profiles
 
-- Primary Engine: `app/main.py`
-- Mechanical Grammar Rules: `rules/rules.md`
-- Controlled Vocabulary Matrix: `rules/vocabulary.md`
-- Test Verification Suite: `tests/test_api.py`
+1. `profile: "general"` (Default)
+   - Everyday professional text, emails, executive summaries, agent-to-agent reports.
+   - Max sentence limit: 35 words.
+   - Eliminates filler phrasing ("in order to", "due to the fact that", "at this point in time").
+   - Punctuation: Standard English (semicolons allowed).
 
-## Invariant Execution Rules
+2. `profile: "technical"`
+   - Standard Operating Procedures (SOPs), API documentation, engineering guides.
+   - Max sentence limit: 25 words.
+   - Flags passive voice and slash constructions.
 
-1. Deterministic Calculation: No random seeds, no statistical guessing. Every score must derive directly from mathematical formulas.
-2. ASD-STE100 Rule Ceilings:
-   - Procedural sentences: maximum 20 words.
-   - Descriptive sentences: maximum 25 words.
-   - Banned punctuation: zero semicolons (;), zero slashes (/), zero exclamation marks (!).
-3. Geospatial Reference: Uber H3 spatial indexing at resolution 8 with Gaussian distance decay.
-4. Schema Contracts: All endpoints accept default empty payloads and return valid HTTP 200 responses with zero HTTP 422 errors.
+3. `profile: "aerospace_ste"` (Strict Standard)
+   - ASD-STE100 Issue 8 compliance for flight ops, defense, and life-critical robotics.
+   - Max sentence limit: 20 words for instructions.
+   - Zero tolerance for semicolons (;), slashes (/), or unapproved terms.
+   - Mandatory reference matrix: `rules/vocabulary.md`.
+
+## Data Flow for Agents
+
+- **Raw Input Drop:** `input/`
+- **Normalized Output:** `output/[filename].[profile].md`
+- **Validation Engine:** `POST /evaluate_ste_compliance` with `{"profile": "<tier>", "text_payload": "..."}`
