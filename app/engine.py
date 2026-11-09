@@ -47,6 +47,18 @@ UNAPPROVED_LEXICON: Dict[str, str] = {
 
 BANNED_PUNCTUATION = [";", "/", "!"]
 
+# Structural function words that break noun clusters
+FUNCTION_STOP_WORDS = {
+    "a", "an", "the", "this", "that", "these", "those", "my", "your", "his", "her", "its", "our", "their",
+    "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did",
+    "will", "would", "shall", "should", "may", "might", "must", "can", "could",
+    "in", "on", "at", "by", "for", "with", "about", "against", "between", "into", "through", "during", "before", "after",
+    "above", "below", "to", "from", "up", "down", "out", "off", "over", "under", "again", "further", "then", "once",
+    "here", "there", "when", "where", "why", "how", "all", "any", "both", "each", "few", "more", "most", "other", "some",
+    "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very",
+    "and", "or", "but", "if", "because", "as", "until", "while", "of"
+}
+
 
 def clamp_coordinates(lat: Any = 0.0, lon: Any = 0.0) -> Tuple[float, float]:
     """Safely clamp coordinates to valid geographic ranges without throwing errors."""
@@ -133,9 +145,20 @@ def evaluate_ste_metrics(payload: Dict[str, Any] = None, *args, **kwargs) -> Dic
             p_slb += (s_words - 20) ** 1.35
 
     # 4. Noun Cluster Penalty (C_nc)
-    # Detect strings of 4 or more capitalized or consecutive common technical words
-    noun_clusters = re.findall(r"\b([A-Za-z]{3,}\s+[A-Za-z]{3,}\s+[A-Za-z]{3,}\s+[A-Za-z]{3,})\b", clean_text)
-    c_nc = float(len(noun_clusters) * 4.0)
+    # Detect strings of 4 or more content words uninterrupted by stopwords
+    c_nc = 0.0
+    for s in sentences:
+        words = re.findall(r"\b[A-Za-z0-9_-]+\b", s)
+        cluster = []
+        for w in words:
+            if w.lower() not in FUNCTION_STOP_WORDS and len(w) > 1:
+                cluster.append(w)
+            else:
+                if len(cluster) >= 4:
+                    c_nc += float(len(cluster) - 3)
+                cluster = []
+        if len(cluster) >= 4:
+            c_nc += float(len(cluster) - 3)
 
     # 5. Composite Compliance Score (S_ste)
     exponent_val = 0.40 * (l_nci / 10.0) + 0.35 * (p_slb / max(1, len(sentences))) + 0.25 * c_nc
@@ -189,7 +212,6 @@ def compute_h3_spatial_tensor(lat: Any = 2.0442, lon: Any = 102.5689, resolution
         else:
             h3_index = "886520d81dfffff"
     else:
-        # Deterministic offline fallback string
         lat_hex = hex(int((clamped_lat + 90.0) * 1000))[2:].zfill(4)
         lon_hex = hex(int((clamped_lon + 180.0) * 1000))[2:].zfill(4)
         h3_index = f"8865{lat_hex}{lon_hex}fff"[:15]
