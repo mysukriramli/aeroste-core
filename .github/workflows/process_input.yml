@@ -4,9 +4,10 @@ on:
   push:
     paths:
       - 'input/**'
+
   schedule:
-    # Runs automatically at minute 0 of every hour, 24/7
     - cron: '0 * * * *'
+
   workflow_dispatch:
 
 permissions:
@@ -16,33 +17,44 @@ jobs:
   transform:
     runs-on: ubuntu-latest
 
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
-        cache: "pip"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
 
-    - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Run STE Batch Queue & Quarantine
-      run: |
-        python scripts/process_queue.py
+      - name: Show Debug Info
+        run: |
+          pwd
+          ls -la
+          echo "PYTHONPATH=$PYTHONPATH"
 
-    - name: Commit and Push Output
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add output/ input/quarantine/
-        if git diff --staged --quiet; then
-          echo "Queue empty or no state changes."
-        else
-          git commit -m "Auto-process queue and sync output [skip ci]"
-          git push
-        fi
+      - name: Run STE Batch Queue & Quarantine
+        run: |
+          python scripts/process_queue.py
+
+      - name: Commit and Push Output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add output/ input/quarantine/
+
+          if git diff --staged --quiet; then
+            echo "Queue empty or no state changes."
+          else
+            git commit -m "Auto-process queue and sync output [skip ci]"
+            git push
+          fi
