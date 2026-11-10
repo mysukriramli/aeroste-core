@@ -35,12 +35,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Show Debug Info
-        run: |
-          pwd
-          ls -la
-          echo "PYTHONPATH=$PYTHONPATH"
-
       - name: Run STE Batch Queue & Quarantine
         run: |
           python scripts/process_queue.py
@@ -50,7 +44,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add output/ input/quarantine/
+          git add .
 
           if git diff --staged --quiet; then
             echo "Queue empty or no state changes."
